@@ -3,23 +3,22 @@
 #include <string.h>
 #include <time.h>
 #include <pthread.h>
-#include <unistd.h>  //Header file for sleep(). man 3 sleep for deta
+#include <unistd.h>  //Header file for sleep()
+#include "interactive_agenda.h"
 
-#define MAX_ACTIVITY_DESCRIPTION 50    // limit for activity entries in file
-#define MAX_ACTIVITIES 50              // maximum number of activities
+// TODO: Use mutex for printing and reading: While there is stuff to be printed, the user cannot input
+//       When the user needs to give input for specific stuff (like "doing an activity"), the console should not print
+//       Make the messages more specific, containing the name of activities
 
-typedef enum {undone, done} status;
-typedef struct {
-    status status;          // 0 undone, 1 done
-    int hh_start;           // starting time: hours
-    int mm_start;           // starting time: minutes
-    int hh_end;             // ending time: hours
-    int mm_end;             // ending time: minutes
-    char description[15];   // name of the activity
-} Activity;
+// TODO: Notion of current time
+// TODO: A thread that checks the starting time of tasks and prints message
+// TODO: A thread (maybe the same) that checks the finishing time of tasks and prints 10 minutes before end
 
+// TODO: Take filename and speed as cmd parameters
+// TODO (optional) Use array of pointers, not of structs!
 
-void convert(char *s) {
+/* Utility functions */
+void underscore_to_space(char *s) {
     /*
      * Replace underscores in a string with spaces
      * Input/Output:
@@ -30,11 +29,7 @@ void convert(char *s) {
             s[i] = ' ';
         }
     }
-
-    return;
 }
-
-
 
 void time_to_string(char* time_string, const int hh, const int mm){
     /*
@@ -74,17 +69,35 @@ int string_to_time(const char *time_string, int *hh, int *mm){
     return 1;
 }
 
+int time_to_minutes(const int hh, const int mm){
+    /*
+     * Convert a timestamp to minutes for easy comparisons
+     * Input:
+     * hh - hours
+     * mm - minutes
+     *
+     * Output:
+     * int - The same time in minutes
+     */
+
+    return (hh * 60 + mm);
+}
+
 void display_help(void){
     /*
      * Display help message
      */
-    printf("\nWelcome to Grandmother Agenda ver.1.2!\n");
-    printf("To check a timeslot, enter time in \"hh:mm\" format or simply type \"now\". \n");
-    printf("I will notify you when it's time to start a task and 10 minutes before a task is due.\n");
-    printf("To display this message again, type \"help\". \n");
-    printf("To exit the program, type \"exit\". \n\n");
+    char s[] = "\nWelcome to Grandmother Agenda ver.1.2!\n"
+               "To check a timeslot, enter time in \"hh:mm\" format or simply type \"now\".\n"
+               "I will notify you when it's time to start a task and 10 minutes before a task is due.\n"
+               "To display this message again, type \"help\".\n"
+               "To exit the program, type \"exit\". \n\n";
+    print_job(s);
+
 }
 
+
+/* Input functions */
 int user_input(char* input){
     /*
      * Read user input from the command line
@@ -97,12 +110,12 @@ int user_input(char* input){
      */
 
     int ret = 0;
-    printf("Waiting for your input.\n");
     fgets(input,15, stdin);
+    reset_clock();
 
     // Exit program
     if(strncmp(input, "exit", 4 * sizeof(char)) == 0){
-        printf("Exiting program!\n\n");
+        //printf("Exiting program!\n\n");
         ret = 1;
     }
     // Display help message
@@ -114,9 +127,9 @@ int user_input(char* input){
     return ret;
 }
 
-int handle_time_input(char *time_string){
+int parse_time_input(char *time_string){
     /*
-     * Check time input. Valid formats: now or %d%d:%d%d
+     * Check time input. Valid formats: "now" or %d%d:%d%d
      * Input:
      * time_string - The input string
      *
@@ -125,32 +138,37 @@ int handle_time_input(char *time_string){
      * Return: 1 for invalid, 0 for valid
      */
 
-    int ret = 0;
+    int ret;
     int hh, mm;
 
     // Input: now --> Get time into string format
     if(strncmp(time_string, "now", 3 * sizeof(char)) == 0){
-        time_t current_time = time(NULL);
-        struct tm *tm = localtime(&current_time);
-        time_to_string(time_string, tm->tm_hour, tm->tm_min);
+        now(time_string);
+        ret = 0;
     }
+    // Input: Probably time in string format, but check it!
     else{
         // Check for valid time input
         if(string_to_time(time_string, &hh, &mm) == 0){   // isolate values from string
             if(hh > 23 || hh < 0 || mm > 59 || mm < 0)     //check provided input
             {
-                printf("Invalid input: 1 day = [0,23] hours, 1 hour = [0,59] minutes. Please try again.\n\n");
+                print_job("Invalid input: 1 day = [0,23] hours, 1 hour = [0,59] minutes. Please try again.\n\n");
                 ret = 1;
             }
+            else
+                ret = 0;
         }
         else{
-            printf("Invalid input! Please try again.\n\n");
+            print_job("Invalid input! Please try again.\n\n");
             ret = 1;
         }
     }
 
     return ret;
 }
+
+
+/* Activity functions */
 
 int load_Activities(char *filename, Activity activities[], int *size){
     /*
@@ -165,16 +183,18 @@ int load_Activities(char *filename, Activity activities[], int *size){
      * int - 0 for success, 1 in case the file is not found
      */
 
-    char string[MAX_ACTIVITY_DESCRIPTION];
+    char string[MAX_STRING_LENGTH];
+
     FILE *f = fopen(filename, "r");
     if (f == NULL) {
-        printf("File \"%s\" not found.\n\n", filename);
+        sprintf(string, "File \"%s\" not found.\n\n", filename);
+        print_job(string);
         return 1;
     }
 
     *size = 0;
     // for each activity in the file
-    while (fgets(string, MAX_ACTIVITY_DESCRIPTION, f)) {
+    while (fgets(string, MAX_STRING_LENGTH, f)) {
 
         activities[*size].status = undone;
 
@@ -192,7 +212,7 @@ int load_Activities(char *filename, Activity activities[], int *size){
 
         token = strtok(NULL, " "); // get description
         token = strtok(token, "\n"); // strip "\n"
-        convert(token);     // replace "_" with " "
+        underscore_to_space(token);     // replace "_" with " "
         strcpy(activities[*size].description, token); // Decode our word before copying it (remove underscores)
 
         (*size)++; // increase size of activities
@@ -201,21 +221,7 @@ int load_Activities(char *filename, Activity activities[], int *size){
     return 0;
 }
 
-int time_to_minutes(const int hh, const int mm){
-    /*
-     * Convert a timestamp to minutes for easy comparisons
-     * Input:
-     * hh - hours
-     * mm - minutes
-     *
-     * Output:
-     * int - The same time in minutes
-     */
-
-    return (hh * 60 + mm);
-}
-
-int check_for_activity(char *time_string, Activity activities[], const int size){
+int find_activity(char *time_string, Activity *activities, const int size){
     /*
      * Check if the provided time corresponds to an existing activity
      * Input:
@@ -246,46 +252,171 @@ int check_for_activity(char *time_string, Activity activities[], const int size)
     return ret;
 }
 
-void *thread1(void *vargp)
+void print_activity(const int index, Activity activities[]){
+    /*
+     * Print activity details. In case an activity is not done, ask for an update.
+     *
+     * Input:
+     * index - The index of the activity in the array activities
+     * activities - An array of type Activity, contains the planned activities
+     */
+
+    // Get start and end time in string format
+    char temp_string[MAX_STRING_LENGTH];
+    char start_string[6];
+    char end_string[6];
+    time_to_string(start_string, activities[index].hh_start, activities[index].mm_start);
+    time_to_string(end_string, activities[index].hh_end, activities[index].mm_end);
+
+    sprintf(temp_string, "%s (%s - %s). ", activities[index].description, start_string, end_string);
+    print_job(temp_string);
+
+    switch(activities[index].status){
+        case undone:
+            print_job("This activity is not done yet.\n");
+            print_job("Should I check this activity as done? yes/no \n");
+            // get user input
+            char input[15];
+            fgets(input,15, stdin);
+            reset_clock();
+            if(strncmp(input, "yes", 3 * sizeof(char)) == 0){
+                print_job("Ok boss, good job! \n");
+                activities[index].status = done;
+            }
+            else{
+                print_job("Activity status remained: undone. \n");
+            }
+            break;
+        case done:
+            print_job("Chill, you already did this activity.\n");
+    }
+}
+
+
+/* Printer thread */
+
+void print_job(char *in_string){
+    /*
+     * Save the message to print in the linked list printer buffer
+     *
+     * Input:
+     * in_string - The message to be printed
+     */
+
+    struct Node *node;
+
+    node = (struct Node*)malloc(sizeof(struct Node));   // allocate memory in the heap for a new node
+    strcpy(node->message, in_string);                   // place the message string in this new node
+    node->link = NULL;                                  // initialize its linked node to NULL
+
+    // If the linked list is empty
+    if (rear == NULL)
+    {
+        front = rear = node;                            // both front and rear should point to the only node
+    }
+    // Else if there are some entries in the list
+    else
+    {
+        // Add the node to the list
+        rear->link = node;
+        rear = node;
+    }
+}
+
+void print_next(){
+    /*
+     * Print the next message in the linked list
+     */
+    struct Node *node;
+    node = front;
+
+    if (front == NULL)
+    {
+        //printf("No messages to print. The list is empty. \n");
+        rear = NULL;
+    }
+    else
+    {
+        printf("%s\n", front->message);  // Print the content of front
+        front = front->link;                    // Move the front pointer
+        free(node);                             // Free previous front
+    }
+}
+
+
+/* Time functions */
+void reset_clock(){
+    printed_last = clock();
+}
+
+void now(char *time_string){
+    /*
+     * Return now in string format "%d%d:%d%d"
+     * Input:
+     * time_string - A string to contain the time
+     */
+    time_t current_time = time(NULL);
+    struct tm *tm = localtime(&current_time);
+    time_to_string(time_string, tm->tm_hour, tm->tm_min);
+}
+
+/* Thread functions */
+void *printer_thread(void *arg)
 {
-    // Print message every 10 minutes
+    clock_t now;
+
     while(1){
-        sleep(10);
-        printf("\nHi from thread! \n");
+        now = clock();
+        // Print every 3 seconds
+        if((float)(now - printed_last) / CLOCKS_PER_SEC >= PRINT_INTERVAL){
+            print_next();
+            reset_clock();  // reset clock when something is printed
+        }
     }
 
     return NULL;
 }
 
 
-int main(void) {
+int main(void){
 
-    display_help();
-//
-//    pthread_t thread_id;
-//    printf("Before Thread\n");
-//    pthread_create(&thread_id, NULL, thread1, NULL);
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, printer_thread, NULL);
 
+    print_job("Hello 1\n");
+    print_job("Hello 2\n");
+    print_job("Hello 3\n");
+
+    // Load activities from file
     Activity activities[MAX_ACTIVITIES];
     int size = 0;
     char filename[] = "activities.txt";
     load_Activities(filename, activities, &size);
 
+    display_help();
+
     char input[15];
     while(1){
-        // Read user input
+        // Read user input, check for "help", "exit", invalid input
         switch(user_input(input)){
-            case 0:
-                // check if the input is time format valid
-                if(handle_time_input(input) == 0){
-                    // TODO: Handle the int I get from check_for_activity()
-                    // input contains valid time
-                    printf("%d\n", check_for_activity(input, activities, size));
-                }
-                break;
             case 1:
                 // the user wants to exit
                 exit(EXIT_SUCCESS);
+            case 2:
+                continue;
+            default:
+                if(parse_time_input(input) != 0){
+                    continue;
+                }
+        }
+        // Input contains valid time
+        int ind_activity = find_activity(input, activities, size);
+        if(ind_activity == -1){
+            print_job("No activity planned, you are free as a bird!\n");
+        }
+        else{
+            // Activity found
+            print_activity(ind_activity, activities);
         }
     }
 
