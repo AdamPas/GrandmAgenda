@@ -1,4 +1,13 @@
-8 0 8 50 Breakfast_Time
-9 30 10 25 Yoga
-10 30 11 00 Second_Breakfast
-19 00 23 30 Taking_a_nap
+0 0 7 29 Sleeping
+7 30 7 59 Wake_Up
+8 0 9 29 Breakfast_time
+9 30 10 59 Yoga
+11 0 11 59 Second_breakfast
+12 0 13 59 Playing_tennis
+14 0 14 59 Lunch
+15 0 17 59 Siesta_time
+18 0 19 59 Poker_with_friends
+20 0 20 29 TV
+20 30 20 59 Night_Yoga
+21 0 21 59 Night_prayer
+22 00 23 59 Sleeping
