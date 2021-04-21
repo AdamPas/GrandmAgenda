@@ -6,13 +6,16 @@
 #include <unistd.h>  //Header file for sleep()
 #include "interactive_agenda.h"
 
-// TODO: Use mutex for printing and reading: While there is stuff to be printed, the user cannot input
+pthread_mutex_t mutex_printer = PTHREAD_MUTEX_INITIALIZER;
+
+// TODO: Debug the printer time scheme
+//       Use mutex for printing and reading: While there is stuff to be printed, the user cannot input
 //       When the user needs to give input for specific stuff (like "doing an activity"), the console should not print
 //       Make the messages more specific, containing the name of activities
 
 // TODO: Notion of current time
-// TODO: A thread that checks the starting time of tasks and prints message
-// TODO: A thread (maybe the same) that checks the finishing time of tasks and prints 10 minutes before end
+//       A thread that checks the starting time of tasks and prints message
+//       A thread (maybe the same) that checks the finishing time of tasks and prints 10 minutes before end
 
 // TODO: Take filename and speed as cmd parameters
 // TODO (optional) Use array of pointers, not of structs!
@@ -87,35 +90,32 @@ void display_help(void){
     /*
      * Display help message
      */
-    char s[] = "\nWelcome to Grandmother Agenda ver.1.2!\n"
+    char s[] = "Welcome to Grandmother Agenda ver.1.2!\n"
                "To check a timeslot, enter time in \"hh:mm\" format or simply type \"now\".\n"
                "I will notify you when it's time to start a task and 10 minutes before a task is due.\n"
                "To display this message again, type \"help\".\n"
                "To exit the program, type \"exit\". \n\n";
-    print_job(s);
+    send_to_printer(s);
 
 }
 
 
 /* Input functions */
-int user_input(char* input){
+int handle_input(char* input){
     /*
-     * Read user input from the command line
+     * Process user input
      * Input:
      * input - A string of sufficient length, to read the input in
      *
      * Output:
-     * input - Contains the input read from command line
-     * return int - 0 time input, 1 exit program, 2 display help message
+     * input - Contains valid time string or useless stuff
+     * return int - -1 invalid input, 0 valid time input, 1 exit program, 2 display help message
      */
 
-    int ret = 0;
-    fgets(input,15, stdin);
-    reset_clock();
+    int ret;
 
     // Exit program
     if(strncmp(input, "exit", 4 * sizeof(char)) == 0){
-        //printf("Exiting program!\n\n");
         ret = 1;
     }
     // Display help message
@@ -123,44 +123,30 @@ int user_input(char* input){
         display_help();
         ret = 2;
     }
-
-    return ret;
-}
-
-int parse_time_input(char *time_string){
-    /*
-     * Check time input. Valid formats: "now" or %d%d:%d%d
-     * Input:
-     * time_string - The input string
-     *
-     * Output:
-     * time_string - Contains valid time or rubbish
-     * Return: 1 for invalid, 0 for valid
-     */
-
-    int ret;
-    int hh, mm;
-
     // Input: now --> Get time into string format
-    if(strncmp(time_string, "now", 3 * sizeof(char)) == 0){
-        now(time_string);
+    else if(strncmp(input, "now", 3 * sizeof(char)) == 0){
+        time_now(input);
         ret = 0;
     }
     // Input: Probably time in string format, but check it!
     else{
+        int hh, mm;
         // Check for valid time input
-        if(string_to_time(time_string, &hh, &mm) == 0){   // isolate values from string
-            if(hh > 23 || hh < 0 || mm > 59 || mm < 0)     //check provided input
+        if(string_to_time(input, &hh, &mm) == 0){          // isolate values from string
+            // Invalid time input
+            if(hh > 23 || hh < 0 || mm > 59 || mm < 0)
             {
-                print_job("Invalid input: 1 day = [0,23] hours, 1 hour = [0,59] minutes. Please try again.\n\n");
-                ret = 1;
+                send_to_printer("Invalid input: 1 day = [0,23] hours, 1 hour = [0,59] minutes. Please try again.\n");
+                ret = -1;
             }
+            // Valid time input
             else
                 ret = 0;
         }
+        // Any other invalid input
         else{
-            print_job("Invalid input! Please try again.\n\n");
-            ret = 1;
+            send_to_printer("Invalid input! Please try again.\n");
+            ret = -1;
         }
     }
 
@@ -188,7 +174,7 @@ int load_Activities(char *filename, Activity activities[], int *size){
     FILE *f = fopen(filename, "r");
     if (f == NULL) {
         sprintf(string, "File \"%s\" not found.\n\n", filename);
-        print_job(string);
+        send_to_printer(string);
         return 1;
     }
 
@@ -268,40 +254,45 @@ void print_activity(const int index, Activity activities[]){
     time_to_string(start_string, activities[index].hh_start, activities[index].mm_start);
     time_to_string(end_string, activities[index].hh_end, activities[index].mm_end);
 
-    sprintf(temp_string, "%s (%s - %s). ", activities[index].description, start_string, end_string);
-    print_job(temp_string);
+    sprintf(temp_string, "%s (%s - %s).\n", activities[index].description, start_string, end_string);
+    send_to_printer(temp_string);
 
     switch(activities[index].status){
         case undone:
-            print_job("This activity is not done yet.\n");
-            print_job("Should I check this activity as done? yes/no \n");
-            // get user input
-            char input[15];
-            fgets(input,15, stdin);
-            reset_clock();
-            if(strncmp(input, "yes", 3 * sizeof(char)) == 0){
-                print_job("Ok boss, good job! \n");
+            sprintf(temp_string, "Activity \"%s\" is not done yet.\nShould I check this activity as done? yes/no\n", activities[index].description);
+            send_to_printer(temp_string);
+
+            // get user input, lock screen until they give it!
+            //pthread_mutex_lock(&mutex_printer);
+            fgets(temp_string,15, stdin);
+            //reset_clock();
+            //pthread_mutex_unlock(&mutex_printer);
+
+            if(strncmp(temp_string, "yes", 3 * sizeof(char)) == 0){
+                send_to_printer("Ok boss, good job! \n");
                 activities[index].status = done;
             }
             else{
-                print_job("Activity status remained: undone. \n");
+                send_to_printer("Activity status remained: undone. \n");
             }
             break;
         case done:
-            print_job("Chill, you already did this activity.\n");
+            send_to_printer("Chill, you already did this activity.\n");
     }
 }
 
 
-/* Printer thread */
+/* Printer functions */
 
-void print_job(char *in_string){
+void send_to_printer(char *in_string){
     /*
      * Save the message to print in the linked list printer buffer
      *
      * Input:
      * in_string - The message to be printed
      */
+
+    pthread_mutex_lock(&mutex_printer); // lock the printer_mutex
 
     struct Node *node;
 
@@ -310,7 +301,7 @@ void print_job(char *in_string){
     node->link = NULL;                                  // initialize its linked node to NULL
 
     // If the linked list is empty
-    if (rear == NULL)
+    if (num_messages == 0)
     {
         front = rear = node;                            // both front and rear should point to the only node
     }
@@ -321,26 +312,30 @@ void print_job(char *in_string){
         rear->link = node;
         rear = node;
     }
+
+    num_messages++;
+    pthread_mutex_unlock(&mutex_printer); // unlock mutex
 }
 
 void print_next(){
     /*
      * Print the next message in the linked list
      */
+
+    pthread_mutex_lock(&mutex_printer);
+
     struct Node *node;
     node = front;
 
-    if (front == NULL)
+    if (num_messages > 0)
     {
-        //printf("No messages to print. The list is empty. \n");
-        rear = NULL;
-    }
-    else
-    {
-        printf("%s\n", front->message);  // Print the content of front
+        printf("%s", front->message);  // Print the content of front
         front = front->link;                    // Move the front pointer
         free(node);                             // Free previous front
+        num_messages--;
     }
+
+    pthread_mutex_unlock(&mutex_printer);
 }
 
 
@@ -349,7 +344,7 @@ void reset_clock(){
     printed_last = clock();
 }
 
-void now(char *time_string){
+void time_now(char *time_string){
     /*
      * Return now in string format "%d%d:%d%d"
      * Input:
@@ -360,15 +355,17 @@ void now(char *time_string){
     time_to_string(time_string, tm->tm_hour, tm->tm_min);
 }
 
+
 /* Thread functions */
 void *printer_thread(void *arg)
 {
-    clock_t now;
+    static clock_t now;
 
     while(1){
         now = clock();
         // Print every 3 seconds
         if((float)(now - printed_last) / CLOCKS_PER_SEC >= PRINT_INTERVAL){
+            //printf("Num messages: %d\n", num_messages);
             print_next();
             reset_clock();  // reset clock when something is printed
         }
@@ -383,36 +380,36 @@ int main(void){
     pthread_t thread_id;
     pthread_create(&thread_id, NULL, printer_thread, NULL);
 
-    print_job("Hello 1\n");
-    print_job("Hello 2\n");
-    print_job("Hello 3\n");
+    char string[MAX_STRING_LENGTH];                // for user input
+    char time_string[10];            //for valid time input
 
     // Load activities from file
     Activity activities[MAX_ACTIVITIES];
     int size = 0;
-    char filename[] = "activities.txt";
-    load_Activities(filename, activities, &size);
+    strcpy(string, "activities.txt");
+    load_Activities(string, activities, &size);
 
     display_help();
 
-    char input[15];
     while(1){
-        // Read user input, check for "help", "exit", invalid input
-        switch(user_input(input)){
-            case 1:
-                // the user wants to exit
+        // Read and process user input
+        fgets(string,15, stdin);
+        switch(handle_input(string)){
+            case 0:     // valid time input in string
+                break;
+            case 1:     // the user wants to exit
                 exit(EXIT_SUCCESS);
-            case 2:
+            case -1:    // invalid input entered
+            case 2:     // help message printed
                 continue;
-            default:
-                if(parse_time_input(input) != 0){
-                    continue;
-                }
         }
-        // Input contains valid time
-        int ind_activity = find_activity(input, activities, size);
+
+        // String contains valid time in string format "%d%d:%d%d"
+        strncpy(time_string, string, 5);
+        int ind_activity = find_activity(time_string, activities, size);
         if(ind_activity == -1){
-            print_job("No activity planned, you are free as a bird!\n");
+            sprintf(string, "No activity planned for time %s, you are free as a bird!\n", time_string);
+            send_to_printer(string);
         }
         else{
             // Activity found

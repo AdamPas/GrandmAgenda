@@ -33,7 +33,9 @@ struct Node{
 
 /* Global Variables */
 clock_t printed_last = 0;   // timestamp that the program printed something or received input
-struct Node *front, *rear;  // front and rear element in the printer buffer queue
+struct Node *front = NULL; // front and rear element in the printer buffer queue
+struct Node *rear = NULL;
+int num_messages = 0;       // number of messages in the printing queue
 
 
 /* Utility functions */
@@ -45,8 +47,7 @@ void display_help(void);
 
 
 /* Input functions */
-int user_input(char* input);
-int parse_time_input(char *time_string);
+int handle_input(char* input);
 
 
 /* Activity functions */
@@ -56,13 +57,13 @@ void print_activity(const int index, Activity activities[]);
 
 
 /* Printer functions */
-void print_job(char *in_string);
+void send_to_printer(char *in_string);
 void print_next();
 
 
 /* Time functions */
 void reset_clock();
-void now(char *time_string);
+void time_now(char *time_string);
 
 
 /* Thread functions */
