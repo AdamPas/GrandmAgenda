@@ -6,16 +6,14 @@
 #include "interactive_agenda.h"
 
 
-// TODO: Check mutexes
 // TODO: Time:
 //       Use a variable to hold the simulation's time in minutes
-//       Also represent time in minutes in struct Activity and in the program
 //       Advance the simulation time in the parallel thread, according to argument passed
 //       A function now() should return the simulation time in minutes
 // TODO: Comments, remove unnecessary stuff
 // TODO: Check the lengths of strings I copy around
 // TODO: Use array of pointers to activities! Do malloc() in Load_Activities()
-// TODO: Draw execution diagram
+
 
 /* Utility functions */
 void underscore_to_space(char *s) {
@@ -50,7 +48,7 @@ void time_to_string(char* time_string, int hh, int mm){
     sprintf(time_string, "%d%d:%d%d", h1, h2, m1, m2);
 }
 
-int string_to_time(const char *time_string, int *hh, int *mm){
+int str_to_time(const char *time_string, int *hh, int *mm){
     /*
      * Converts time from string to integers format
      *
@@ -83,6 +81,33 @@ int time_to_minutes(int hh, int mm){
     return (hh * 60 + mm);
 }
 
+void minutes_to_string(int t_minutes, char *t_string){
+    /*
+     * Convert time from minutes to string format
+     * Input:
+     * t_minutes - the time in total minutes format
+     *
+     * Output:
+     * t_string
+     *
+     */
+
+    sprintf(t_string, "%d:%d", (t_minutes / 60), (t_minutes % 60));
+}
+
+int str_to_minutes(const char *t_string){
+    /*
+     * Convert time from string format to minutes
+     * Input: t_string - the time to be converted
+     *
+     * Output: The time in minutes
+     */
+
+    int hh, mm;
+    sscanf(t_string, "%d:%d", &hh, &mm);
+    return time_to_minutes(hh, mm);
+}
+
 void display_intro(void){
     /*
      * Display intro message
@@ -102,11 +127,12 @@ int handle_input(char* input){
      * input - A string of sufficient length, to read the input in
      *
      * Output:
-     * input - Contains valid time string or useless stuff
+     * input - Contains valid time input or invalid input
      * return int - -1 invalid input, 0 valid time input, 1 exit program
      */
 
     int ret;
+    int hh, mm;
 
     // Exit program
     if(strncmp(input, "exit", 4 * sizeof(char)) == 0){
@@ -114,14 +140,13 @@ int handle_input(char* input){
     }
     // Input: now --> Get time into string format
     else if(strncmp(input, "now", 3 * sizeof(char)) == 0){
-        time_now_string(input);
+        now_string(input);
         ret = 0;
     }
     // Input: Probably time in string format, but check it!
     else{
-        int hh, mm;
         // Check for valid time input
-        if(string_to_time(input, &hh, &mm) == 0){          // isolate values from string
+        if(str_to_time(input, &hh, &mm) == 0){          // isolate values from string
             // Invalid time input
             if(hh > 23 || hh < 0 || mm > 59 || mm < 0)
             {
@@ -158,6 +183,7 @@ int load_Activities(const char *filename){
      * int - 0 for success, 1 in case the file is not found
      */
 
+    static int hh_start, mm_start, hh_end, mm_end;
     char string[MAX_STRING_LENGTH];
 
     FILE *f = fopen(filename, "r");
@@ -174,21 +200,24 @@ int load_Activities(const char *filename){
         activities[num_activities].start_notification = undone;
 
         char *token = strtok(string, " "); // get start hour
-        activities[num_activities].hh_start = atoi(token);
+        hh_start = atoi(token);
 
         token = strtok(NULL, " ");  // get start minute
-        activities[num_activities].mm_start = atoi(token);
+        mm_start = atoi(token);
 
         token = strtok(NULL, " ");  // get ending hour
-        activities[num_activities].hh_end = atoi(token);
+        hh_end = atoi(token);
 
         token = strtok(NULL, " ");  // get ending minute
-        activities[num_activities].mm_end = atoi(token);
+        mm_end = atoi(token);
+
+        activities[num_activities].start = time_to_minutes(hh_start, mm_start);
+        activities[num_activities].end = time_to_minutes(hh_end, mm_end);
 
         token = strtok(NULL, " "); // get description
         token = strtok(token, "\n"); // strip "\n"
         underscore_to_space(token);     // replace "_" with " "
-        strcpy(activities[num_activities].description, token); // Decode our word before copying it (remove underscores)
+        strcpy(activities[num_activities].description, token);
 
         (num_activities)++; // increase size of activities
     }
@@ -196,31 +225,25 @@ int load_Activities(const char *filename){
     return 0;
 }
 
-int find_activity(char *time_string){
+int find_activity(char *t_string){
     /*
      * Check if the provided time corresponds to an existing activity
      * Input:
-     * time_string - The time in string format
-     * activities - A list of activities of type Activity
-     * size - The size of the activities list
+     * t_string - The time in string format
      *
      * Output:
      * Return: The activity index, if one exists or -1 if it doesn't
      */
 
     int ret = -1;
-    int hh, mm;
-    int start, end;
-    string_to_time(time_string, &hh, &mm);
-    int input_time = time_to_minutes(hh, mm);
+    int input_time = str_to_minutes(t_string);
 
+    // Search all activities to find the one corresponding to the input time
     for(int i=0; i<num_activities; i++){
-        start = time_to_minutes(activities[i].hh_start, activities[i].mm_start);
-        end = time_to_minutes(activities[i].hh_end, activities[i].mm_end);
-
-        // First check if the ending time and the starting time
-        if(start<=input_time && input_time<=end){
+        if(activities[i].start<=input_time && input_time<=activities[i].end){
+            // Activity found!
            ret = i;
+           break;
         }
     }
 
@@ -240,8 +263,8 @@ void print_activity(int index){
     char temp_string[MAX_STRING_LENGTH];
     char start_string[6];
     char end_string[6];
-    time_to_string(start_string, activities[index].hh_start, activities[index].mm_start);
-    time_to_string(end_string, activities[index].hh_end, activities[index].mm_end);
+    minutes_to_string(activities[index].start, start_string);
+    minutes_to_string(activities[index].end, end_string);
 
     sprintf(temp_string, "%s (%s - %s).\n", activities[index].description, start_string, end_string);
     send_to_printer(temp_string);
@@ -287,7 +310,7 @@ void send_to_printer(char *in_string){
     struct Node *node;
     node = (struct Node*)malloc(sizeof(struct Node));   // allocate memory in the heap for a new node
     if(node == NULL){
-        // Message dropped, not critical
+        // Message dropped, not critical. Unlock mutex and return
         printf("Memory allocation failed! Message dropped.\n");
         pthread_mutex_unlock(&mutex_printer);
         return;
@@ -340,7 +363,7 @@ void reset_clock(){
     printed_last = clock();
 }
 
-void time_now_string(char *time_string){
+void now_string(char *time_string){
     /*
      * Return now in string format "%d%d:%d%d"
      * Input:
@@ -351,7 +374,7 @@ void time_now_string(char *time_string){
     time_to_string(time_string, tm->tm_hour, tm->tm_min);
 }
 
-void time_now_int(int *hh, int *mm){
+void now_int(int *hh, int *mm){
     /*
     * Return now in format hh, mm
     * Input:
@@ -364,31 +387,43 @@ void time_now_int(int *hh, int *mm){
     *mm = tm->tm_min;
 }
 
-/* Thread functions */
-void *printer_thread(void *arg)
-{
-    while(1){
-        // Print next available message
-        now = clock();
+int now_minutes(){
+    /*
+    * Return now in minutes format
+    *
+    * Output:
+    * now in minutes format
+    */
+    time_t current_time = time(NULL);
+    struct tm *tm = localtime(&current_time);
+    return(time_to_minutes(tm->tm_hour, tm->tm_min));
+}
 
-        // atomic execution
+/* Thread functions */
+void *thread_printer(void *arg)
+{
+    static clock_t now_clock = 0; // for execution time
+    static int hh, mm, now_min;
+    char string[MAX_STRING_LENGTH];
+
+    while(1){
+
+        /* Print next available message */
+        // atomic execution, for printed_last to be safe
         pthread_mutex_lock(&mutex_clock);
-        if((float)(now - printed_last) / CLOCKS_PER_SEC >= PRINT_INTERVAL){
+        now_clock = clock();
+        if((float)(now_clock - printed_last) / CLOCKS_PER_SEC >= PRINT_INTERVAL){
             print_next();
             reset_clock();  // reset clock when something is printed
         }
         pthread_mutex_unlock(&mutex_clock);
 
-        int hh, mm, now_minutes;
-        char string[MAX_STRING_LENGTH];
 
-
-        // Get the time now in minutes
-        time_now_int(&hh, &mm);
-        now_minutes = time_to_minutes(hh, mm);
+        /* Check start and end notification of activities */
+        now_min = now_minutes();
 
         // If start of current activity reached
-        if(now_minutes == activity_starts){
+        if(now_min == activity_starts){
             if(activities[current_activity].start_notification == undone){
                 sprintf(string, "Activity \"%s\" starts now!\n", activities[current_activity].description);
                 send_to_printer(string);
@@ -396,26 +431,24 @@ void *printer_thread(void *arg)
             }
         }
         // The current activity ends soon
-        else if((now_minutes + MINUTES_DUE) >= activity_ends){
-
-            sprintf(string, "Activity \"%s\" ends in less than 10 minutes!\n", activities[current_activity].description);
+        else if((now_min + MINUTES_DUE) >= activity_ends){
+            sprintf(string, "Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity].description, MINUTES_DUE);
             send_to_printer(string);
 
-            // Move to next activity
+            // The next activity becomes the current activity
             current_activity++;
 
             // If there is no next activity, exit
             if(current_activity >= num_activities){
-                printf("Activity \"%s\" ends in less than 10 minutes!\n", activities[current_activity-1].description);
+                printf("Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity-1].description, MINUTES_DUE);
                 printf("End of day reached! Exiting.\n");
                 exit(EXIT_SUCCESS);
             }
 
             // Store new activity starting and finishing times
-            activity_starts = time_to_minutes(activities[current_activity].hh_start,
-                                              activities[current_activity].mm_start);
-            activity_ends = time_to_minutes(activities[current_activity].hh_end,
-                                            activities[current_activity].mm_end);
+            activity_starts = activities[current_activity].start;
+            activity_ends = activities[current_activity].end;
+
         }
     }
 
@@ -425,7 +458,7 @@ void *printer_thread(void *arg)
 
 int main(int argc, char *argv[]){
 
-    // Command line arguments parsing
+    /* Command line arguments parsing */
     if( argc != 3 ) {
         printf("Please supply the following arguments:\n"
                " 1.filename 2.time_speed_factor\n");
@@ -434,6 +467,8 @@ int main(int argc, char *argv[]){
 
     printf("Chosen speed factor: %s\n", argv[2]);
 
+
+    /* Initialization */
     char string[MAX_STRING_LENGTH];     // for user input
     char time_string[10];               //for valid time input
     int index;
@@ -442,26 +477,22 @@ int main(int argc, char *argv[]){
     if(load_Activities(argv[1]))
         exit(EXIT_FAILURE);
 
-    // Find current activity
-    time_now_string(time_string);
+    // Initialize current activity variables
+    now_string(time_string);
     current_activity = find_activity(time_string);
-    activity_starts = time_to_minutes(activities[current_activity].hh_start,
-                                      activities[current_activity].mm_start);
-    activity_ends = time_to_minutes(activities[current_activity].hh_end,
-                                    activities[current_activity].mm_end);
+    activity_starts = activities[current_activity].start;
+    activity_ends = activities[current_activity].end;
 
-    printf("Current activity: %d", current_activity);
 
-    // Create thread for printing and checking times
+    /* Launch thread for printing messages and checking activity notifications */
     pthread_t thread_id;
-    pthread_create(&thread_id, NULL, printer_thread, NULL);
+    pthread_create(&thread_id, NULL, thread_printer, NULL);
 
-    // Display intro message
+
+    /* User input Loop */
     display_intro();
-
-    // Main loop
     while(1){
-        // Read user input and reset printing clock
+        // Read user input and reset printer clock
         fgets(string,15, stdin);
         pthread_mutex_lock(&mutex_clock);
         reset_clock();
