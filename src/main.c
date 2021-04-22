@@ -2,145 +2,39 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <pthread.h>
-#include "interactive_agenda.h"
 
+#include "main.h"
+#include "utils.h"
 
-// TODO: Comments check
-// TODO: try to substitute global variables
-
-// TODO: Optional
-// TODO: Variadic function for printer (to avoid sprintf() every time)
-
-
-
-/* Utility functions */
-void underscore_to_space(char *s) {
-    /*
-     * Replace underscores in a string with spaces
-     * Input/Output:
-     * s - The string to be converted
-     */
-    for (int i = 0; i < strlen(s); i++) {
-        if (s[i] == '_') {
-            s[i] = ' ';
-        }
-    }
-}
-
-void hm_to_string(char* time_string, int hh, int mm){
-    /*
-     * Converts time from integers to string format
-     * Input:
-     * time_string - A pointer to a string of sufficient length, time in hours and minutes
-     * hh - hours
-     * mm - minutes
-     *
-     * Output:
-     * In time_string
-     */
-    int h1 = hh / 10;
-    int h2 = hh % 10;
-    int m1 = mm / 10;
-    int m2 = mm % 10;
-
-    sprintf(time_string, "%d%d:%d%d", h1, h2, m1, m2);
-}
-
-int str_to_hm(const char *time_string, int *hh, int *mm){
-    /*
-     * Converts time from string to integers format
-     *
-     * Input:
-     * time_string - A pointer to the string containing the time
-     *
-     * Output:
-     * hh: Hours
-     * mm: Minutes
-     * Return int - 0 for success, 1 for failure
-     */
-    int args_num = sscanf(time_string, "%d:%d", hh, mm);
-    if (args_num == 2)
-        return 0;
-
-    return 1;
-}
-
-int hm_to_minutes(int hh, int mm){
-    /*
-     * Convert a timestamp to minutes for easy comparisons
-     * Input:
-     * hh - hours
-     * mm - minutes
-     *
-     * Output:
-     * int - The same time in minutes
-     */
-
-    return (hh * 60 + mm);
-}
-
-void minutes_to_hm(int t_minutes, int *hh, int *mm){
-    /*
-     * Converts time from minutes to h:m format
-     *
-     * Input:
-     * t_minutes - Time in minutes
-     *
-     * Output:
-     * hh: Hours
-     * mm: Minutes
-     */
-
-    *hh = t_minutes / 60;
-    *mm = t_minutes % 60;
-}
-
-void minutes_to_str(int t_minutes, char *t_string){
-    /*
-     * Convert time from minutes to string format
-     * Input:
-     * t_minutes - the time in total minutes format
-     *
-     * Output:
-     * t_string
-     *
-     */
-    int h, m;
-    minutes_to_hm(t_minutes, &h, &m);
-    hm_to_string(t_string, h, m);
-}
-
-int str_to_minutes(const char *t_string){
-    /*
-     * Convert time from string format to minutes
-     * Input: t_string - the time to be converted
-     *
-     * Output: The time in minutes
-     */
-
-    int hh, mm;
-    sscanf(t_string, "%d:%d", &hh, &mm);
-    return hm_to_minutes(hh, mm);
-}
 
 void display_intro(void){
     /*
      * Display intro message
      */
-    printf("Welcome to Grandmother Agenda ver.1.2!\n"
+    printf("\n  ___                  ___\n"
+                  " (o o)                (o o)\n"
+                  "(  V  ) GRANDMAGENDA (  V  )\n"
+                  "--m-m------------------m-m--\n\n");
+    printf("Welcome to Grandm(other)Agenda ver.1.2!\n"
                "To check a timeslot, enter time in \"hh:mm\" format or simply type \"now\".\n"
                "I will notify you when it's time to start an activity and 10 minutes before an activity is due.\n"
-               "To exit the program, type \"exit\". \n\n");
+               "To exit the program, type \"exit\".\n\n"
+               "First, let's initialize the grandmother world time.\n");
 }
 
 
 /* Input functions */
 void user_input(char* input){
+    /*
+     * Read user input from the terminal
+     * Output:
+     * input - a string of sufficient size
+     */
     fgets(input, MAX_STRING_LENGTH, stdin);
-    strtok(input, "\n"); // Strip newline from string
-    pthread_mutex_lock(&mutex_print_clock);
-    reset_clock();
+    strtok(input, "\n");                // Strip newline from string
+
+    pthread_mutex_lock(&mutex_print_clock);  // Reset the printer clock
+    reset_print_clock();
     pthread_mutex_unlock(&mutex_print_clock);
 }
 
@@ -148,7 +42,7 @@ int process_input(char* input){
     /*
      * Process user input
      * Input:
-     * input - A string of arbitrary length, stripped of \n in its end
+     * input - A string of arbitrary length containing user input, stripped of \n in its end
      *
      * Output:
      * input - Contains valid time input or invalid input, as interpreted by the returned value
@@ -204,7 +98,7 @@ int process_input(char* input){
 
 /* Activity functions */
 
-int load_Activities(const char *filename){
+int load_activities(const char *filename){
     /*
      * Load activities from a txt file (specific format, see activities.txt)
      *
@@ -328,7 +222,6 @@ void print_activity(int index){
 
 
 /* Printer functions */
-
 void send_to_printer(char *in_string){
     /*
      * Save the message to print in the linked list printer buffer
@@ -368,7 +261,7 @@ void send_to_printer(char *in_string){
     pthread_mutex_unlock(&mutex_printer); // unlock mutex
 }
 
-void print_next(){
+void print_next(void){
     /*
      * Print the next message in the linked list
      */
@@ -391,30 +284,21 @@ void print_next(){
 
 
 /* Time functions */
-void reset_clock(){
+void reset_print_clock(){
     last_t_printed = clock();
 }
 
-void now_string(char *time_string){
-    /*
-     * Return now in string format "%d%d:%d%d"
-     * Input:
-     * time_string - A string to contain the time
-     */
-    time_t current_time = time(NULL);
-    struct tm *tm = localtime(&current_time);
-    hm_to_string(time_string, tm->tm_hour, tm->tm_min);
-}
+
 
 
 /* Thread functions */
 void *thread_printer(void *arg)
 {
-    static clock_t now_clock; // for execution time
-    static int hh, mm, now_min;
+    static clock_t now_clock;       // for execution time
+    static int hh, mm, now_min;     // used as temp
     char string[MAX_STRING_LENGTH];
 
-    float time_step = 60 / speed_factor;    // calculate once to save on computations
+    float time_step = 60 / (float)speed_factor;    // calculate once to save on computations
 
     while(1){
 
@@ -434,7 +318,7 @@ void *thread_printer(void *arg)
         now_clock = clock();
         if((float)(now_clock - last_t_printed) / CLOCKS_PER_SEC >= PRINT_INTERVAL){
             print_next();
-            reset_clock();  // reset clock when something is printed
+            reset_print_clock();  // reset clock when something is printed
         }
         pthread_mutex_unlock(&mutex_print_clock);
 
@@ -482,44 +366,42 @@ void *thread_printer(void *arg)
 
 int main(int argc, char *argv[]){
 
-    /* Command line arguments parsing */
-    if( argc != 3 ) {
-        printf("Please supply the following arguments:\n"
-               " 1.filename 2.time_speed_factor\n");
-        exit(EXIT_FAILURE);
-    }
-    char filename[20];
-    strcpy(filename, argv[1]);
-    if(argv[2] > 16 || argv[2] < 1){
-        printf("Invalid speed input. Setting to normal time.\n");
-        speed_factor = 1;
-    }
-    else{
-        speed_factor = atoi(argv[2]);
-    }
-
-    
-    /* Initialization */
     char string[MAX_STRING_LENGTH];    // for user input
     static int i_activity;             // activity index
 
+    /* Command line arguments parsing */
+    if( argc != 3 ) {
+        printf("Please supply the following arguments:\n"
+               " 1.full text filepath 2.time_speed_factor\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(string, argv[1]);
+    speed_factor = atoi(argv[2]);
+    if(speed_factor < 1){
+        printf("Invalid speed factor. Exiting.\n");
+        exit(EXIT_FAILURE);
+    }
+
+
+    /* Initialization */
     // Load activities from file, if not, exit
-    if(load_Activities(filename))
+    if(load_activities(string))
         exit(EXIT_FAILURE);
 
     // Initialize simulation time, according to user input
-    printf("Initialization. What is the current time in the granny world? (e.g.8:40 or now)\n");
+    display_intro();
+    printf("What is the current time in the granny world? (e.g. 8:40 or now)\n");
     user_input(string);
     switch(process_input(string)){
         case 0:     // valid time input in string
             break;
         default:    // in any other case, use real world NOW
-            now_string(string);
+            now_in_string(string);
             break;
     }
     printf("Initialized to %s\n", string);
     t_simulation = str_to_minutes(string);    // initialize simulation time
-    last_t_sim = clock();
+    last_t_sim = 0;
 
     // Find current activity
     current_activity = find_activity(string);
@@ -533,7 +415,6 @@ int main(int argc, char *argv[]){
 
 
     /* User input Loop */
-    display_intro();
     while(1){
         // Read user input
         user_input(string);
