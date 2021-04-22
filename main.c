@@ -451,15 +451,20 @@ void *thread_printer(void *arg)
         }
         // The current activity ends soon
         else if((t_simulation + MINUTES_DUE) >= activity_ends){
-            sprintf(string, "Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity].description, MINUTES_DUE);
-            send_to_printer(string);
+            if(activities[current_activity].status == undone){
+                sprintf(string, "Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity].description, MINUTES_DUE);
+                send_to_printer(string);
+            }
 
             // The next activity becomes the current activity
             current_activity++;
 
             // If there is no next activity, exit
             if(current_activity >= num_activities){
-                printf("Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity-1].description, MINUTES_DUE);
+                if(activities[current_activity].status == undone){
+                    printf("Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity-1].description, MINUTES_DUE);
+                    send_to_printer(string);
+                }
                 printf("End of day reached! Exiting.\n");
                 exit(EXIT_SUCCESS);
             }
@@ -497,7 +502,7 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
 
     // Initialize simulation time, according to user input
-    printf("Initialization. What is the current time in the granny world?\n");
+    printf("Initialization. What is the current time in the granny world? (e.g.8:40 or now)\n");
     user_input(string);
     switch(process_input(string)){
         case 0:     // valid time input in string
