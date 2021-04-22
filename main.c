@@ -3,17 +3,19 @@
 #include <string.h>
 #include <time.h>
 #include <pthread.h>
-#include <unistd.h>  //Header file for sleep()
 #include "interactive_agenda.h"
 
-pthread_mutex_t mutex_printer = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_clock = PTHREAD_MUTEX_INITIALIZER;
 
-// TODO: Tidy and optimize
-// TODO: Notion of program time and how to speed it up
-
-// TODO: Take filename and speed as cmd parameters
-// TODO (optional) Use array of pointers, not of structs!
+// TODO: Check mutexes
+// TODO: Time:
+//       Use a variable to hold the simulation's time in minutes
+//       Also represent time in minutes in struct Activity and in the program
+//       Advance the simulation time in the parallel thread, according to argument passed
+//       A function now() should return the simulation time in minutes
+// TODO: Comments, remove unnecessary stuff
+// TODO: Check the lengths of strings I copy around
+// TODO: Use array of pointers to activities! Do malloc() in Load_Activities()
+// TODO: Draw execution diagram
 
 /* Utility functions */
 void underscore_to_space(char *s) {
@@ -29,7 +31,7 @@ void underscore_to_space(char *s) {
     }
 }
 
-void time_to_string(char* time_string, const int hh, const int mm){
+void time_to_string(char* time_string, int hh, int mm){
     /*
      * Converts time from integers to string format
      * Input:
@@ -67,7 +69,7 @@ int string_to_time(const char *time_string, int *hh, int *mm){
     return 1;
 }
 
-int time_to_minutes(const int hh, const int mm){
+int time_to_minutes(int hh, int mm){
     /*
      * Convert a timestamp to minutes for easy comparisons
      * Input:
@@ -81,17 +83,14 @@ int time_to_minutes(const int hh, const int mm){
     return (hh * 60 + mm);
 }
 
-void display_help(void){
+void display_intro(void){
     /*
-     * Display help message
+     * Display intro message
      */
-    char s[] = "Welcome to Grandmother Agenda ver.1.2!\n"
+    printf("Welcome to Grandmother Agenda ver.1.2!\n"
                "To check a timeslot, enter time in \"hh:mm\" format or simply type \"now\".\n"
-               "I will notify you when it's time to start an activity and 10 minutes before an actvity is due.\n"
-               "To display this message again, type \"help\".\n"
-               "To exit the program, type \"exit\". \n\n";
-    send_to_printer(s);
-
+               "I will notify you when it's time to start an activity and 10 minutes before an activity is due.\n"
+               "To exit the program, type \"exit\". \n\n");
 }
 
 
@@ -104,7 +103,7 @@ int handle_input(char* input){
      *
      * Output:
      * input - Contains valid time string or useless stuff
-     * return int - -1 invalid input, 0 valid time input, 1 exit program, 2 display help message
+     * return int - -1 invalid input, 0 valid time input, 1 exit program
      */
 
     int ret;
@@ -112,11 +111,6 @@ int handle_input(char* input){
     // Exit program
     if(strncmp(input, "exit", 4 * sizeof(char)) == 0){
         ret = 1;
-    }
-    // Display help message
-    else if(strncmp(input, "help", 4 * sizeof(char)) == 0){
-        display_help();
-        ret = 2;
     }
     // Input: now --> Get time into string format
     else if(strncmp(input, "now", 3 * sizeof(char)) == 0){
@@ -233,7 +227,7 @@ int find_activity(char *time_string){
     return ret;
 }
 
-void print_activity(const int index){
+void print_activity(int index){
     /*
      * Print activity details. In case an activity is not done, ask for an update.
      *
@@ -293,8 +287,10 @@ void send_to_printer(char *in_string){
     struct Node *node;
     node = (struct Node*)malloc(sizeof(struct Node));   // allocate memory in the heap for a new node
     if(node == NULL){
-        printf("Memory allocation failed! Exiting.\n");
-        exit(EXIT_FAILURE);
+        // Message dropped, not critical
+        printf("Memory allocation failed! Message dropped.\n");
+        pthread_mutex_unlock(&mutex_printer);
+        return;
     }
 
     strcpy(node->message, in_string);                   // place the message string in this new node
@@ -443,7 +439,6 @@ int main(int argc, char *argv[]){
     int index;
 
     // Load activities from file
-    //strcpy(string, argv[1]);
     if(load_Activities(argv[1]))
         exit(EXIT_FAILURE);
 
@@ -462,7 +457,7 @@ int main(int argc, char *argv[]){
     pthread_create(&thread_id, NULL, printer_thread, NULL);
 
     // Display intro message
-    display_help();
+    display_intro();
 
     // Main loop
     while(1){
@@ -479,7 +474,7 @@ int main(int argc, char *argv[]){
             case 1:     // the user wants to exit
                 exit(EXIT_SUCCESS);
             case -1:    // invalid input entered
-            case 2:     // help message printed
+            default:
                 continue;
         }
 

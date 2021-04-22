@@ -44,13 +44,15 @@ Activity activities[MAX_ACTIVITIES];
 int num_activities = 0;
 int current_activity;
 int activity_starts, activity_ends;
+pthread_mutex_t mutex_printer = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_clock = PTHREAD_MUTEX_INITIALIZER;
 
 
 /* Utility functions */
 void underscore_to_space(char *s);
-void time_to_string(char* time_string, const int hh, const int mm);
+void time_to_string(char* time_string, int hh, int mm);
 int string_to_time(const char *time_string, int *hh, int *mm);
-int time_to_minutes(const int hh, const int mm);
+int time_to_minutes(int hh, int mm);
 void display_help(void);
 
 
@@ -61,7 +63,7 @@ int handle_input(char* input);
 /* Activity functions */
 int load_Activities(const char *filename);
 int find_activity(char *time_string);
-void print_activity(const int index);
+void print_activity(int index);
 
 
 /* Printer functions */
