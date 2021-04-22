@@ -2,7 +2,7 @@
 // Created by adam on 20.04.21.
 //
 
-#define MAX_STRING_LENGTH 500          // limit for activity entries per line in file
+#define MAX_STRING_LENGTH 200          // limit for activity entries per line in file
 #define MAX_ACTIVITIES 50              // maximum number of activities
 #define PRINT_INTERVAL 3               // printing time interval in secs
 #define MINUTES_DUE 10                 // the minutes to give a notification, before an activity ends
@@ -18,12 +18,8 @@ typedef struct {
      */
     status status;          // 0 undone, 1 done
     status start_notification; // done, if the start notification is printed
-//    int hh_start;           // starting time: hours
-//    int mm_start;           // starting time: minutes
-    int start;              // starting time in minutes
-    int end;                // ending time in minutes
-//    int hh_end;             // ending time: hours
-//    int mm_end;             // ending time: minutes
+    int start;              // starting time in minutes format
+    int end;                // ending time in minutes format
     char description[100];   // name of the activity
 } Activity;
 
@@ -37,7 +33,9 @@ struct Node{
 
 
 /* Global Variables */
+int speed_factor;
 int t_simulation;
+clock_t last_t_sim;
 clock_t printed_last = 0;   // timestamp that the program printed something or received input
 
 struct Node *front = NULL; // front and rear element in the printer buffer queue
@@ -50,7 +48,8 @@ int current_activity;
 int activity_starts, activity_ends;
 
 pthread_mutex_t mutex_printer = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_clock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_print_clock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_t_simulation = PTHREAD_MUTEX_INITIALIZER;
 
 
 /* Utility functions */

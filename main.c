@@ -5,12 +5,9 @@
 #include <pthread.h>
 #include "interactive_agenda.h"
 
+// TODO: Initialization with the time the user inputs
 
-// TODO: Time:
-//       Use a variable to hold the simulation's time in minutes
-//       Advance the simulation time in the parallel thread, according to argument passed
-//       A function now() should return the simulation time in minutes
-// TODO: Comments, remove unnecessary stuff
+// TODO: Comments, try to substitute global variables
 // TODO: Check the lengths of strings I copy around
 // TODO: Use array of pointers to activities! Do malloc() in Load_Activities()
 
@@ -92,7 +89,7 @@ void minutes_to_string(int t_minutes, char *t_string){
      *
      */
 
-    sprintf(t_string, "%d:%d", (t_minutes / 60), (t_minutes % 60));
+    time_to_string(t_string, (t_minutes / 60), (t_minutes % 60));
 }
 
 int str_to_minutes(const char *t_string){
@@ -138,9 +135,14 @@ int handle_input(char* input){
     if(strncmp(input, "exit", 4 * sizeof(char)) == 0){
         ret = 1;
     }
-    // Input: now --> Get time into string format
+    // Input: now --> Return current simulation time in string format
     else if(strncmp(input, "now", 3 * sizeof(char)) == 0){
-        now_string(input);
+        pthread_mutex_lock(&mutex_t_simulation);
+        minutes_to_string(t_simulation, input);
+        pthread_mutex_unlock(&mutex_t_simulation);
+
+        printf("%s\n", input);
+
         ret = 0;
     }
     // Input: Probably time in string format, but check it!
@@ -266,31 +268,34 @@ void print_activity(int index){
     minutes_to_string(activities[index].start, start_string);
     minutes_to_string(activities[index].end, end_string);
 
-    sprintf(temp_string, "%s (%s - %s).\n", activities[index].description, start_string, end_string);
+    sprintf(temp_string, "%s (%s - %s)\n", activities[index].description, start_string, end_string);
     send_to_printer(temp_string);
 
     switch(activities[index].status){
         case undone:
-            sprintf(temp_string, "Activity \"%s\" is not done yet.\nShould I check this activity as done? yes/no\n", activities[index].description);
+            sprintf(temp_string, "Activity \"%s\" is not done yet.\nShould I check this activity as done? (yes/no)\n", activities[index].description);
             send_to_printer(temp_string);
 
             // get user input
             fgets(temp_string,15, stdin);
             // reset the printing clock
-            pthread_mutex_lock(&mutex_clock);
+            pthread_mutex_lock(&mutex_print_clock);
             reset_clock();
-            pthread_mutex_unlock(&mutex_clock);
+            pthread_mutex_unlock(&mutex_print_clock);
 
             if(strncmp(temp_string, "yes", 3 * sizeof(char)) == 0){
-                send_to_printer("Ok boss, good job! \n");
+                sprintf(temp_string, "Activity \"%s\" marked as done! \n", activities[index].description);
+                send_to_printer(temp_string);
                 activities[index].status = done;
             }
             else{
-                send_to_printer("Activity status remained: undone. \n");
+                sprintf(temp_string, "Status of \"%s\" remained: undone. \n", activities[index].description);
+                send_to_printer(temp_string);
             }
             break;
         case done:
-            send_to_printer("Chill, you already did this activity.\n");
+            sprintf(temp_string, "Chill, you already did \"%s\".\n", activities[index].description);
+            send_to_printer(temp_string);
     }
 }
 
@@ -402,28 +407,37 @@ int now_minutes(){
 /* Thread functions */
 void *thread_printer(void *arg)
 {
-    static clock_t now_clock = 0; // for execution time
+    static clock_t now_clock; // for execution time
     static int hh, mm, now_min;
     char string[MAX_STRING_LENGTH];
 
     while(1){
 
+        /* Advance Simulation Time */
+        pthread_mutex_lock(&mutex_t_simulation);
+        now_clock = clock();
+        if((float)(now_clock - last_t_sim) / CLOCKS_PER_SEC >= (60 / speed_factor)) {
+            last_t_sim = now_clock;
+            t_simulation++; // increase the simulation time (minutes format)
+        }
+        pthread_mutex_unlock(&mutex_t_simulation);
+
+
         /* Print next available message */
         // atomic execution, for printed_last to be safe
-        pthread_mutex_lock(&mutex_clock);
+        pthread_mutex_lock(&mutex_print_clock);
         now_clock = clock();
         if((float)(now_clock - printed_last) / CLOCKS_PER_SEC >= PRINT_INTERVAL){
             print_next();
             reset_clock();  // reset clock when something is printed
         }
-        pthread_mutex_unlock(&mutex_clock);
+        pthread_mutex_unlock(&mutex_print_clock);
 
 
         /* Check start and end notification of activities */
-        now_min = now_minutes();
 
         // If start of current activity reached
-        if(now_min == activity_starts){
+        if(t_simulation == activity_starts){
             if(activities[current_activity].start_notification == undone){
                 sprintf(string, "Activity \"%s\" starts now!\n", activities[current_activity].description);
                 send_to_printer(string);
@@ -431,7 +445,7 @@ void *thread_printer(void *arg)
             }
         }
         // The current activity ends soon
-        else if((now_min + MINUTES_DUE) >= activity_ends){
+        else if((t_simulation + MINUTES_DUE) >= activity_ends){
             sprintf(string, "Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity].description, MINUTES_DUE);
             send_to_printer(string);
 
@@ -465,8 +479,7 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 
-    printf("Chosen speed factor: %s\n", argv[2]);
-
+    speed_factor = atoi(argv[2]);
 
     /* Initialization */
     char string[MAX_STRING_LENGTH];     // for user input
@@ -483,6 +496,9 @@ int main(int argc, char *argv[]){
     activity_starts = activities[current_activity].start;
     activity_ends = activities[current_activity].end;
 
+    // Initialize simulation time
+    t_simulation = now_minutes();
+    last_t_sim = clock();
 
     /* Launch thread for printing messages and checking activity notifications */
     pthread_t thread_id;
@@ -494,9 +510,9 @@ int main(int argc, char *argv[]){
     while(1){
         // Read user input and reset printer clock
         fgets(string,15, stdin);
-        pthread_mutex_lock(&mutex_clock);
+        pthread_mutex_lock(&mutex_print_clock);
         reset_clock();
-        pthread_mutex_unlock(&mutex_clock);
+        pthread_mutex_unlock(&mutex_print_clock);
 
         // Handle user input
         switch(handle_input(string)){
