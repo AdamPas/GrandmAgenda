@@ -5,11 +5,12 @@
 #include <pthread.h>
 #include "interactive_agenda.h"
 
-// TODO: Initialization with the time the user inputs
-
+// TODO: Initialization with the time the user inputs. DEBUG user input! DEBUG printing time e.g. 8:2
 // TODO: Comments, try to substitute global variables
-// TODO: Check the lengths of strings I copy around
-// TODO: Use array of pointers to activities! Do malloc() in Load_Activities()
+
+// TODO: Optional
+// TODO: Variadic function for printer (to avoid sprintf() every time)
+
 
 
 /* Utility functions */
@@ -121,11 +122,11 @@ int handle_input(char* input){
     /*
      * Process user input
      * Input:
-     * input - A string of sufficient length, to read the input in
+     * input - A string of arbitrary length
      *
      * Output:
      * input - Contains valid time input or invalid input
-     * return int - -1 invalid input, 0 valid time input, 1 exit program
+     * return int - -1 invalid input, 0 valid time input, 1 exit program, 2 valid now
      */
 
     int ret;
@@ -141,12 +142,14 @@ int handle_input(char* input){
         minutes_to_string(t_simulation, input);
         pthread_mutex_unlock(&mutex_t_simulation);
 
-        printf("%s\n", input);
-
-        ret = 0;
+        ret = 2;
     }
     // Input: Probably time in string format, but check it!
     else{
+        if(strlen(input) > 5){
+            memset(input+5, '\0', 1);   // keep in input, only the first 5 characters
+        }
+
         // Check for valid time input
         if(str_to_time(input, &hh, &mm) == 0){          // isolate values from string
             // Invalid time input
@@ -277,7 +280,7 @@ void print_activity(int index){
             send_to_printer(temp_string);
 
             // get user input
-            fgets(temp_string,15, stdin);
+            fgets(temp_string,MAX_STRING_LENGTH, stdin);
             // reset the printing clock
             pthread_mutex_lock(&mutex_print_clock);
             reset_clock();
@@ -478,27 +481,39 @@ int main(int argc, char *argv[]){
                " 1.filename 2.time_speed_factor\n");
         exit(EXIT_FAILURE);
     }
-
+    char filename[20];
+    strcpy(filename, argv[1]);
     speed_factor = atoi(argv[2]);
 
-    /* Initialization */
-    char string[MAX_STRING_LENGTH];     // for user input
-    char time_string[10];               //for valid time input
-    int index;
 
-    // Load activities from file
-    if(load_Activities(argv[1]))
+    /* Initialization */
+    char string[MAX_STRING_LENGTH];    // for user input
+    char t_string[20];                  //for valid time input
+    static int i_activity;             // activity index
+
+    // Load activities from file, if not, exit
+    if(load_Activities(filename))
         exit(EXIT_FAILURE);
 
-    // Initialize current activity variables
-    now_string(time_string);
-    current_activity = find_activity(time_string);
+    // Initialize simulation time, according to user input
+    printf("Initialization. What is the current time in the granny world?\n");
+    fgets(t_string,MAX_STRING_LENGTH, stdin);
+    switch(handle_input(t_string)){
+        case 0:     // valid time input in string
+            break;
+        default:    // in any other case, use real world NOW
+            now_string(t_string);
+            break;
+    }
+    printf("Initialized to %s\n", t_string);
+    t_simulation = str_to_minutes(t_string);    // initialize simulation time
+    last_t_sim = clock();
+
+    // Find current activity
+    current_activity = find_activity(t_string);
     activity_starts = activities[current_activity].start;
     activity_ends = activities[current_activity].end;
 
-    // Initialize simulation time
-    t_simulation = now_minutes();
-    last_t_sim = clock();
 
     /* Launch thread for printing messages and checking activity notifications */
     pthread_t thread_id;
@@ -509,14 +524,17 @@ int main(int argc, char *argv[]){
     display_intro();
     while(1){
         // Read user input and reset printer clock
-        fgets(string,15, stdin);
+        fgets(t_string,MAX_STRING_LENGTH, stdin);
         pthread_mutex_lock(&mutex_print_clock);
         reset_clock();
         pthread_mutex_unlock(&mutex_print_clock);
 
         // Handle user input
-        switch(handle_input(string)){
+        switch(handle_input(t_string)){
             case 0:     // valid time input in string
+                break;
+            case 2: // now
+                printf("%s\n", t_string); // print time for convenience
                 break;
             case 1:     // the user wants to exit
                 exit(EXIT_SUCCESS);
@@ -526,16 +544,15 @@ int main(int argc, char *argv[]){
         }
 
         // String contains valid time in string format "%d%d:%d%d"
-        strncpy(time_string, string, 5);
-        index = find_activity(time_string);
-        if(index == -1){
+        i_activity = find_activity(t_string);
+        if(i_activity == -1){
             // Something is wrong with the activities file
             printf("Activity not found. There should be no free slot in the activities file!Exiting.\n");
             exit(EXIT_FAILURE);
         }
 
         // Activity found
-        print_activity(index);
+        print_activity(i_activity);
     }
 
     return 0;
