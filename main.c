@@ -490,9 +490,15 @@ int main(int argc, char *argv[]){
     }
     char filename[20];
     strcpy(filename, argv[1]);
-    speed_factor = atoi(argv[2]);
+    if(argv[2] > 16 || argv[2] < 1){
+        printf("Invalid speed input. Setting to normal time.\n");
+        speed_factor = 1;
+    }
+    else{
+        speed_factor = atoi(argv[2]);
+    }
 
-
+    
     /* Initialization */
     char string[MAX_STRING_LENGTH];    // for user input
     static int i_activity;             // activity index
