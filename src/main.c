@@ -1,3 +1,12 @@
+/*
+ * Main ideas:
+ * 2 threads, so that the terminal remains open to user input at all times.
+ * A queue (linked list) for the printing buffer. Store messages and print them at the defined interval.
+ * Use an internal program time notion, which can run faster than the real world.
+ * The user can enter whatever, so handle input robustly with checks.
+ */
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
