@@ -2,6 +2,11 @@
 // Created by adam on 22.04.21.
 //
 
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+
 #ifndef UTILS_H
 #define UTILS_H
 
