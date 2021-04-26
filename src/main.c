@@ -301,7 +301,6 @@ void reset_print_clock(){
 void *thread_printer(void *arg)
 {
     static clock_t now_clock;       // for execution time
-    static int hh, mm, now_min;     // used as temp
     char string[MAX_STRING_LENGTH];
 
     float time_step = 60 / (float)speed_factor;    // calculate once to save on computations
