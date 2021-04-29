@@ -6,5 +6,5 @@ set(CMAKE_C_STANDARD 99)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-add_executable(GrandmAgenda src/main.c)
+add_executable(GrandmAgenda src/main.c src/utils.c)
 target_link_libraries(GrandmAgenda PRIVATE Threads::Threads)

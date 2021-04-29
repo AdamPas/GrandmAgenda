@@ -6,17 +6,67 @@
  * The user can enter whatever, so handle input robustly with checks.
  */
 
-
+#include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
+#include <string.h>
+#include <time.h>
 
 #include "main.h"
 #include "utils.h"
 
 
-void display_intro(void){
+#define MAX_STRING_LENGTH 200          // limit for activity entries per line in file
+#define MAX_ACTIVITIES 50              // maximum number of activities
+#define PRINT_INTERVAL 3               // printing time interval in secs
+#define MINUTES_DUE 10                 // the minutes to give a notification, before an activity ends
+
+
+/* Enums and structs */
+typedef enum {undone, done} status;     // status of an activity
+typedef struct {
     /*
-     * Display intro message
+     * Represents an activity
      */
+    status status;                  // 0 undone, 1 done
+    status start_notification;      // done, if the start notification is printed
+    int start;                      // starting time in minutes format
+    int end;                        // ending time in minutes format
+    char description[100];          // name of the activity
+} Activity;
+struct Node{
+    /*
+     * Represents a node in the messages queue of the printer
+     */
+    char message[MAX_STRING_LENGTH];
+    struct Node *link;
+};
+
+
+/* Global Variables */
+int speed_factor;               // input from user: how fast the simulated time moves (1 real time, 2 twice, etc.)
+int t_simulation;               // the internal simulation time
+clock_t last_t_sim;             // the last system time that t_simulation was advanced
+clock_t last_t_printed = 0;     // the last system time that the program printed something or received input
+
+struct Node *front = NULL;      // front and rear element in the printer buffer queue
+struct Node *rear = NULL;
+int num_messages = 0;           // number of messages in the printing queue
+
+Activity activities[MAX_ACTIVITIES];    // activities list
+int num_activities = 0;                 // total number of activities
+int current_activity;                   // index to activities[]
+int activity_starts, activity_ends;     // start and end time of current activity
+
+// mutexes for variables common to all threads
+pthread_mutex_t mutex_printer = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_print_clock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_t_simulation = PTHREAD_MUTEX_INITIALIZER;
+
+
+
+void display_intro(void){
+
     printf("\n  ___                  ___\n"
                   " (o o)                (o o)\n"
                   "(  V  ) GRANDMAGENDA (  V  )\n"
@@ -31,11 +81,7 @@ void display_intro(void){
 
 /* Input functions */
 void user_input(char* input){
-    /*
-     * Read user input from the terminal
-     * Output:
-     * input - a string of sufficient size
-     */
+
     fgets(input, MAX_STRING_LENGTH, stdin);
     strtok(input, "\n");                // Strip newline from string
 
@@ -44,16 +90,8 @@ void user_input(char* input){
     pthread_mutex_unlock(&mutex_print_clock);
 }
 
+
 int process_input(char* input){
-    /*
-     * Process user input
-     * Input:
-     * input - A string of arbitrary length containing user input, stripped of \n in its end
-     *
-     * Output:
-     * input - Contains valid time input or invalid input, as interpreted by the returned value
-     * return int - -1 invalid input, 0 valid time input, 1 exit program, 2 valid now
-     */
 
     int ret;
     int hours, minutes;
@@ -105,17 +143,6 @@ int process_input(char* input){
 /* Activity functions */
 
 int load_activities(const char *filename){
-    /*
-     * Load activities from a txt file (specific format, see activities.txt)
-     *
-     * Input:
-     * filename: The name of the file containing the activities
-     * activities: An empty activities for the activities to be loaded in
-     * size: After loading, this will contain the number of activities in the activities
-     *
-     * Output:
-     * int - 0 for success, 1 in case the file is not found
-     */
 
     static int hh_start, mm_start, hh_end, mm_end;
     char string[MAX_STRING_LENGTH];
@@ -159,15 +186,8 @@ int load_activities(const char *filename){
     return 0;
 }
 
+
 int find_activity(char *t_string){
-    /*
-     * Check if the provided time corresponds to an existing activity
-     * Input:
-     * t_string - The time in string format
-     *
-     * Output:
-     * Return: The activity index, if one exists or -1 if it doesn't
-     */
 
     int ret = -1;
     int input_time = str_to_minutes(t_string);
@@ -185,13 +205,6 @@ int find_activity(char *t_string){
 }
 
 void print_activity(int index){
-    /*
-     * Print activity details. In case an activity is not done, ask for an update.
-     *
-     * Input:
-     * index - The index of the activity in the array activities
-     * activities - An array of type Activity, contains the planned activities
-     */
 
     // Get start and end time in string format
     char temp_string[MAX_STRING_LENGTH];
@@ -229,13 +242,7 @@ void print_activity(int index){
 
 /* Printer functions */
 void send_to_printer(char *in_string){
-    /*
-     * Save the message to print in the linked list printer buffer
-     *
-     * Input:
-     * in_string - The message to be printed
-     */
-
+    
     pthread_mutex_lock(&mutex_printer); // lock the printer_mutex
 
     struct Node *node;
@@ -268,9 +275,6 @@ void send_to_printer(char *in_string){
 }
 
 void print_next(void){
-    /*
-     * Print the next message in the linked list
-     */
 
     pthread_mutex_lock(&mutex_printer);
 

@@ -1,10 +1,8 @@
-//
-// Created by adam on 22.04.21.
-//
-
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
+/**
+ *  @file utils.h 
+ *  @brief  Utility functions for handling time formats
+ * 
+ */ 
 
 
 #ifndef UTILS_H
@@ -12,124 +10,72 @@
 
 
 /* Utility functions */
-void underscore_to_space(char *s) {
-    /*
-     * Replace underscores in a string with spaces
-     * Input/Output:
-     * s - The string to be converted
-     */
-    for (int i = 0; i < strlen(s); i++) {
-        if (s[i] == '_') {
-            s[i] = ' ';
-        }
-    }
-}
 
-void hm_to_string(char* time_string, int hh, int mm){
-    /*
-     * Converts time from integers to string format
-     * Input:
-     * hh - hours
-     * mm - minutes
-     *
-     * Output:
-     * time_string - A pointer to a string of sufficient length, time in hours and minutes
-     */
-    int h1 = hh / 10;
-    int h2 = hh % 10;
-    int m1 = mm / 10;
-    int m2 = mm % 10;
+/**
+ * @brief  Replace underscores in a string with spaces
+ * @param The string to be converted
+ */
+extern void underscore_to_space(char *s);
 
-    sprintf(time_string, "%d%d:%d%d", h1, h2, m1, m2);
-}
 
-int str_to_hm(const char *time_string, int *hh, int *mm){
-    /*
-     * Converts time from string to integers format
-     *
-     * Input:
-     * time_string - A pointer to the string containing the time
-     *
-     * Output:
-     * hh: Hours
-     * mm: Minutes
-     * Return int - 0 for success, 1 for failure
-     */
-    int args_num = sscanf(time_string, "%d:%d", hh, mm);
-    if (args_num == 2)
-        return 0;
+/**
+ * @brief  Convert time from integers to string format
+ * @param time_string  A pointer to a string of sufficient length, holds the result
+ * @param hh  Hours
+ * @param mm  Minutes
+ */
+extern void hm_to_string(char* time_string, int hh, int mm);
 
-    return 1;
-}
 
-int hm_to_minutes(int hh, int mm){
-    /*
-     * Convert a timestamp to minutes for easy comparisons
-     * Input:
-     * hh - hours
-     * mm - minutes
-     *
-     * Output:
-     * int - The same time in minutes
-     */
+/**
+ * @brief  Convert time from string to integers format
+ * @param time_string  A pointer to the string containing the time
+ * @param hh  Hours
+ * @param mm  Minutes
+ * @return   0 for success, 1 for failure
+ */
+extern int str_to_hm(const char *time_string, int *hh, int *mm);
 
-    return (hh * 60 + mm);
-}
 
-void minutes_to_hm(int t_minutes, int *hh, int *mm){
-    /*
-     * Converts time from minutes to h:m format
-     *
-     * Input:
-     * t_minutes - Time in minutes
-     *
-     * Output:
-     * hh: Hours
-     * mm: Minutes
-     */
+/**
+ * @brief  Convert a timestamp to minutes for easy comparisons
+ * @param hh  Hours
+ * @param mm  Minutes
+ * @return   Time in minutes format
+ */
+extern int hm_to_minutes(int hh, int mm);
 
-    *hh = t_minutes / 60;
-    *mm = t_minutes % 60;
-}
 
-void minutes_to_str(int t_minutes, char *t_string){
-    /*
-     * Convert time from minutes to string format
-     * Input:
-     * t_minutes - the time in total minutes format
-     *
-     * Output:
-     * t_string
-     *
-     */
-    int h, m;
-    minutes_to_hm(t_minutes, &h, &m);
-    hm_to_string(t_string, h, m);
-}
+/**
+ * @brief  Convert time from nimutes to h:m format
+ * @param t_minutes  Time in minutes format
+ * @param hh  Hours
+ * @param mm  Minutes
+ */
+extern void minutes_to_hm(int t_minutes, int *hh, int *mm);
 
-int str_to_minutes(const char *t_string){
-    /*
-     * Convert time from string format to minutes
-     * Input: t_string - the time to be converted
-     *
-     * Output: The time in minutes
-     */
 
-    int hh, mm;
-    sscanf(t_string, "%d:%d", &hh, &mm);
-    return hm_to_minutes(hh, mm);
-}
+/**
+ * @brief  Convert time from minutes to string format
+ * @param t_minutes  the time in total minutes format
+ * @param t_string  String to hold the result
+ */
+extern void minutes_to_str(int t_minutes, char *t_string);
 
-void now_in_string(char *time_string){
-    /*
-     * Return now in string format "%d%d:%d%d"
-     * Input:
-     * time_string - A string to contain the time
-     */
-    time_t current_time = time(NULL);
-    struct tm *tm = localtime(&current_time);
-    hm_to_string(time_string, tm->tm_hour, tm->tm_min);
-}
+
+/**
+ * @brief   Convert time from string format to minutes
+ * @param t_string  The time to be converted in string format
+ * @return  Time in minutes format
+ */
+extern int str_to_minutes(const char *t_string);
+
+
+/**
+ * @brief Return real-time "now" in string format "%d%d:%d%d"
+ * @param time_string  A string to hold the result
+ */
+extern void now_in_string(char *time_string);
 
 
 #endif //UTILS_H
