@@ -1,6 +1,8 @@
-/*
- * author: Adam Pasvatis
- */
+/**
+ *  @file main.h 
+ *  @brief  Main functionality functions
+ * 
+ */ 
 
 #ifndef GRANDMAGENDA_H
 #define GRANDMAGENDA_H
@@ -54,10 +56,27 @@ extern void print_activity(int index);
 /* Printer functions */
 
 /**
- * @brief   Save the message to print in the linked list printer buffer
- * @param in_string  The message to be printed
+ * @brief   Save the message to print in the printer buffer
+ * @param in_string  The message to be printed as formated string
+ * @param ... The necessary variables for the formated string
+ * 
+ * --------------------------------------------------------------
+ * Perform simple printing of formatted data
+ * Supported conversion specifiers: 
+ *      d, i     signed int
+ *      u        unsigned int
+ *      ld, li   signed long
+ *      lu       unsigned long
+ *      f        double
+ *      c        char
+ *      s        string
+ *      %        '%'
+ * Usage: %[conversion specifier]
+ * Note: This function does not support these format specifiers: 
+ *      [flag][min width][precision][length modifier]
+ * --------------------------------------------------------------
  */
-extern void send_to_printer(char *in_string);
+extern void send_to_printer(const char *in_string, ...);
 
 /**
  * @brief   Print the next message in the linked list

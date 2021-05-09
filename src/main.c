@@ -1,3 +1,9 @@
+/**
+ *  @file main.h 
+ *  @brief  Main functionality functions
+ * 
+ */ 
+
 /*
  * Main ideas:
  * 2 threads, so that the terminal remains open to user input at all times.
@@ -11,15 +17,16 @@
 #include <pthread.h>
 #include <string.h>
 #include <time.h>
+#include <stdarg.h>
 
 #include "main.h"
 #include "utils.h"
 
 
-#define MAX_STRING_LENGTH 200          // limit for activity entries per line in file
-#define MAX_ACTIVITIES 50              // maximum number of activities
-#define PRINT_INTERVAL 3               // printing time interval in secs
-#define MINUTES_DUE 10                 // the minutes to give a notification, before an activity ends
+#define MAX_STRING_LENGTH 200          // a fixed limit for handled strings
+#define MAX_ACTIVITIES 50                       // maximum number of activities
+#define PRINT_INTERVAL 3                         // printing time interval in secs
+#define MINUTES_DUE 10                           // the minutes to give a notification, before an activity ends
 
 
 /* Enums and structs */
@@ -213,36 +220,95 @@ void print_activity(int index){
     minutes_to_str(activities[index].start, start_string);
     minutes_to_str(activities[index].end, end_string);
 
-    sprintf(temp_string, "%s (%s - %s)\n", activities[index].description, start_string, end_string);
-    send_to_printer(temp_string);
+    send_to_printer("%s (%s - %s)\n", activities[index].description, start_string, end_string);
 
     switch(activities[index].status){
         case undone:
-            sprintf(temp_string, "Activity \"%s\" is not done yet.\nShould I check this activity as done? (yes/no)\n", activities[index].description);
-            send_to_printer(temp_string);
+            send_to_printer("Activity \"%s\" is not done yet.\nShould I check this activity as done? (yes/no)\n", activities[index].description);
 
             user_input(temp_string);
 
             if(strncmp(temp_string, "yes", 3 * sizeof(char)) == 0){
-                sprintf(temp_string, "Activity \"%s\" marked as done! \n", activities[index].description);
-                send_to_printer(temp_string);
+                send_to_printer("Activity \"%s\" marked as done! \n", activities[index].description);
                 activities[index].status = done;
             }
             else{
-                sprintf(temp_string, "Status of \"%s\" remained: undone. \n", activities[index].description);
-                send_to_printer(temp_string);
+                send_to_printer( "Status of \"%s\" remained: undone. \n", activities[index].description);
             }
             break;
         case done:
-            sprintf(temp_string, "Chill, you already did \"%s\".\n", activities[index].description);
-            send_to_printer(temp_string);
+            send_to_printer("Chill, you already did \"%s\".\n", activities[index].description);
     }
 }
 
 
 /* Printer functions */
-void send_to_printer(char *in_string){
+
+void send_to_printer(const char *in_string, ...){
     
+    
+    /** Generate formated string **/
+    
+    char buf[MAX_STRING_LENGTH];            // buffer for storing the formatted data
+    char *pbuf = buf;                                             // pointer to the buffer for appending
+    va_list pargs;
+
+    /* Initialise pargs to point to the first optional argument */
+    va_start(pargs, in_string);  
+
+    /* Iterate through the formatted string to replace all conversion specifiers with the respective values */
+    while(*in_string) {
+
+        if(*in_string == '%') {
+            switch(*(++in_string)) {
+                case 'd': 
+                case 'i': 
+                    pbuf += sprintf(pbuf, "%d", va_arg(pargs, int));
+                    break;        
+                case 'u': 
+                    pbuf += sprintf(pbuf, "%u", va_arg(pargs, unsigned int));
+                    break;        
+                case 'l': 
+                    switch(*(++in_string)) {
+                        case 'd': 
+                        case 'i': 
+                            pbuf += sprintf(pbuf, "%ld", va_arg(pargs, long));
+                            break;            
+                        case 'u': 
+                            pbuf += sprintf( pbuf, "%lu", va_arg(pargs, unsigned long));
+                            break;
+                    }
+                    break;        
+                case 'f': 
+                    pbuf += sprintf(pbuf, "%f", va_arg(pargs, double));
+                    break;
+                case 'c':
+                    *(pbuf++) = (char)va_arg(pargs, int);
+                    break;        
+                case 's': 
+                    pbuf += sprintf(pbuf, "%s", va_arg(pargs, char *));
+                    break;        
+                case '%':
+                    *(pbuf++) = '%';
+                    break;        
+                default:
+                    break;
+            }
+        } 
+        else {
+          // Any other normal character
+          *(pbuf++) = *in_string;
+        }
+
+        in_string++;  // point to next character
+    }
+
+    *pbuf = '\0';     // append null to string
+    va_end(pargs);    // release memory
+    
+    
+    /** Place formated message in printer buffer **/
+
     pthread_mutex_lock(&mutex_printer); // lock the printer_mutex
 
     struct Node *node;
@@ -254,7 +320,7 @@ void send_to_printer(char *in_string){
         return;
     }
 
-    strcpy(node->message, in_string);                   // place the message string in this new node
+    strcpy(node->message, buf);                // place the message string in this new node
     node->link = NULL;                                  // initialize its linked node to NULL
 
     // If the linked list is empty
@@ -299,14 +365,10 @@ void reset_print_clock(){
 }
 
 
-
-
 /* Thread functions */
 void *thread_printer(void *arg)
 {
     static clock_t now_clock;       // for execution time
-    char string[MAX_STRING_LENGTH];
-
     float time_step = 60 / (float)speed_factor;    // calculate once to save on computations
 
     while(1){
@@ -337,16 +399,14 @@ void *thread_printer(void *arg)
         // If start of current activity reached
         if(t_simulation == activity_starts){
             if(activities[current_activity].start_notification == undone){
-                sprintf(string, "Activity \"%s\" starts now!\n", activities[current_activity].description);
-                send_to_printer(string);
+                send_to_printer("Activity \"%s\" starts now!\n", activities[current_activity].description);
                 activities[current_activity].start_notification = done;
             }
         }
         // The current activity ends soon
         else if((t_simulation + MINUTES_DUE) >= activity_ends){
             if(activities[current_activity].status == undone){
-                sprintf(string, "Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity].description, MINUTES_DUE);
-                send_to_printer(string);
+                send_to_printer("Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity].description, MINUTES_DUE);
             }
 
             // The next activity becomes the current activity
@@ -356,7 +416,6 @@ void *thread_printer(void *arg)
             if(current_activity >= num_activities){
                 if(activities[current_activity].status == undone){
                     printf("Activity \"%s\" ends in less than %d minutes!\n", activities[current_activity-1].description, MINUTES_DUE);
-                    send_to_printer(string);
                 }
                 printf("End of day reached! Exiting.\n");
                 exit(EXIT_SUCCESS);
